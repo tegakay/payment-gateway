@@ -1,0 +1,284 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgcrypto]
+}
+
+// ─── Phase 1: Merchant Identity, Auth & API Keys ───────────────────────────
+
+model Merchant {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String         @unique
+  passwordHash String
+  businessName String
+  status       MerchantStatus @default(ACTIVE)
+  balanceCents BigInt         @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  apiKeys          ApiKey[]
+  refreshTokens    RefreshToken[]
+  paymentIntents   PaymentIntent[]
+  webhookEndpoints WebhookEndpoint[]
+
+  @@index([status])
+}
+
+enum MerchantStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+model ApiKey {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  merchantId String    @db.Uuid
+  merchant   Merchant  @relation(fields: [merchantId], references: [id])
+  keyPrefix  String
+  hashedKey  String    @unique
+  scopes     String[]
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([merchantId])
+  @@index([keyPrefix])
+}
+
+model RefreshToken {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  merchantId   String    @db.Uuid
+  merchant     Merchant  @relation(fields: [merchantId], references: [id])
+  tokenHash    String    @unique
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  replacedById String?   @db.Uuid
+  createdAt    DateTime  @default(now())
+
+  @@index([merchantId])
+}
+
+// ─── Phase 2: Payment Intents & State Machine ───────────────────────────────
+
+model PaymentIntent {
+  id                    String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  merchantId            String              @db.Uuid
+  merchant              Merchant            @relation(fields: [merchantId], references: [id])
+  amountCents           BigInt
+  amountCapturedCents   BigInt              @default(0)
+  amountRefundedCents   BigInt              @default(0)
+  currency              String              @db.Char(3)
+  status                PaymentIntentStatus @default(CREATED)
+  captureMethod         CaptureMethod       @default(AUTOMATIC)
+  paymentMethodSnapshot Json
+  failureCode           String?
+  metadata              Json?
+  version               Int                 @default(0)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  ledgerEntries LedgerEntry[]
+  refunds       Refund[]
+  events        PaymentIntentEvent[]
+
+  @@index([merchantId, status])
+  @@index([status, createdAt])
+}
+
+enum PaymentIntentStatus {
+  CREATED
+  REQUIRES_ACTION
+  PROCESSING
+  REQUIRES_CAPTURE
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+enum CaptureMethod {
+  AUTOMATIC
+  MANUAL
+}
+
+model PaymentIntentEvent {
+  id              String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  paymentIntentId String               @db.Uuid
+  paymentIntent   PaymentIntent        @relation(fields: [paymentIntentId], references: [id])
+  fromStatus      PaymentIntentStatus?
+  toStatus        PaymentIntentStatus
+  reason          String?
+  createdAt       DateTime             @default(now())
+
+  @@index([paymentIntentId, createdAt])
+}
+
+// ─── Phase 4: Double-Entry Ledger & Refunds ────────────────────────────────
+
+model LedgerAccount {
+  id         String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  merchantId String?           @db.Uuid
+  type       LedgerAccountType
+  currency   String            @db.Char(3)
+  createdAt  DateTime          @default(now())
+
+  entries LedgerEntry[]
+
+  @@unique([merchantId, type, currency])
+}
+
+enum LedgerAccountType {
+  MERCHANT_AVAILABLE
+  MERCHANT_PENDING
+  PLATFORM_CLEARING
+  PLATFORM_REVENUE
+}
+
+model LedgerEntry {
+  id                 String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transactionGroupId String          @db.Uuid
+  accountId          String          @db.Uuid
+  account            LedgerAccount   @relation(fields: [accountId], references: [id])
+  paymentIntentId    String?         @db.Uuid
+  paymentIntent      PaymentIntent?  @relation(fields: [paymentIntentId], references: [id])
+  refundId           String?         @db.Uuid
+  refund             Refund?         @relation(fields: [refundId], references: [id])
+  direction          LedgerDirection
+  amountCents        BigInt
+  currency           String          @db.Char(3)
+  entryType          LedgerEntryType
+  createdAt          DateTime        @default(now())
+
+  @@index([accountId, createdAt])
+  @@index([transactionGroupId])
+  @@index([paymentIntentId])
+}
+
+enum LedgerDirection {
+  DEBIT
+  CREDIT
+}
+
+enum LedgerEntryType {
+  CAPTURE
+  REFUND
+  FEE
+  ADJUSTMENT
+}
+
+model Refund {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  paymentIntentId String       @db.Uuid
+  paymentIntent   PaymentIntent @relation(fields: [paymentIntentId], references: [id])
+  amountCents     BigInt
+  reason          String?
+  status          RefundStatus @default(SUCCEEDED)
+  version         Int          @default(0)
+  createdAt       DateTime     @default(now())
+
+  ledgerEntries LedgerEntry[]
+
+  @@index([paymentIntentId])
+}
+
+enum RefundStatus {
+  SUCCEEDED
+  FAILED
+}
+
+// ─── Phase 4: Statement Exports ────────────────────────────────────────────
+
+model StatementExport {
+  id         String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  merchantId String               @db.Uuid
+  month      String
+  status     StatementExportStatus @default(PENDING)
+  downloadUrl String?
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+
+  @@index([merchantId])
+}
+
+enum StatementExportStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+// ─── Phase 6: Webhook Dispatch ─────────────────────────────────────────────
+
+model WebhookEndpoint {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  merchantId    String    @db.Uuid
+  merchant      Merchant  @relation(fields: [merchantId], references: [id])
+  url           String
+  hashedSecret  String
+  enabledEvents String[]
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+
+  deliveries WebhookDelivery[]
+
+  @@index([merchantId])
+}
+
+model WebhookDelivery {
+  id                String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  webhookEndpointId String               @db.Uuid
+  webhookEndpoint   WebhookEndpoint      @relation(fields: [webhookEndpointId], references: [id])
+  eventType         String
+  payload           Json
+  status            WebhookDeliveryStatus @default(PENDING)
+  attemptCount      Int                  @default(0)
+  lastAttemptAt     DateTime?
+  lastResponseCode  Int?
+  lastError         String?
+  nextRetryAt       DateTime?
+  createdAt         DateTime             @default(now())
+
+  @@index([webhookEndpointId, status])
+  @@index([status, nextRetryAt])
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  DELIVERED
+  FAILED
+  EXHAUSTED
+}
+
+// ─── Phase 7: Admin ────────────────────────────────────────────────────────
+
+model AdminUser {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String    @unique
+  passwordHash String
+  role         AdminRole @default(SUPPORT)
+  createdAt    DateTime  @default(now())
+}
+
+enum AdminRole {
+  SUPPORT
+  SUPERADMIN
+}
+
+model GatewaySimulationConfig {
+  id             String         @id @default("singleton")
+  globalFailureRate Float       @default(0)
+  forcedOutcome  ForcedOutcome?
+  latencyMsMin   Int            @default(200)
+  latencyMsMax   Int            @default(1500)
+  updatedAt      DateTime       @updatedAt
+  updatedByAdminId String?      @db.Uuid
+}
+
+enum ForcedOutcome {
+  ALWAYS_SUCCEED
+  ALWAYS_FAIL
+  ALWAYS_REQUIRE_ACTION
+}

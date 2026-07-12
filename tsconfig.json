@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2021",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "incremental": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictBindCallApply": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@libs/common": ["libs/common/src/index.ts"],
+      "@libs/common/*": ["libs/common/src/*"],
+      "@libs/prisma": ["libs/prisma/src/index.ts"],
+      "@libs/prisma/*": ["libs/prisma/src/*"],
+      "@libs/redis": ["libs/redis/src/index.ts"],
+      "@libs/redis/*": ["libs/redis/src/*"],
+      "@libs/ledger": ["libs/ledger/src/index.ts"],
+      "@libs/ledger/*": ["libs/ledger/src/*"],
+      "@libs/idempotency": ["libs/idempotency/src/index.ts"],
+      "@libs/idempotency/*": ["libs/idempotency/src/*"],
+      "@libs/webhooks": ["libs/webhooks/src/index.ts"],
+      "@libs/webhooks/*": ["libs/webhooks/src/*"]
+    }
+  }
+}
