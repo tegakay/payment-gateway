@@ -14,6 +14,7 @@ export const envValidationSchema = Joi.object({
   S3_SECRET_KEY: Joi.string().required(),
   WEBHOOK_SIGNING_SECRET_PEPPER: Joi.string().min(16).required(),
   API_KEY_PEPPER: Joi.string().min(16).required(),
+  API_KEY_ROTATION_GRACE_MS: Joi.number().default(24 * 60 * 60 * 1000),
   NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
   PORT: Joi.number().default(3000),
   PROCESS_TYPE: Joi.string().valid('api', 'worker').default('api'),

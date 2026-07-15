@@ -43,13 +43,13 @@ services:
       retries: 5
 
   migrate:
-    image: node:20-alpine
-    working_dir: /app
-    volumes:
-      - .:/app
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: build
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/payment_gateway
-    command: sh -c "npm ci --omit=dev && npx prisma migrate deploy"
+    command: npx prisma migrate deploy
     depends_on:
       postgres:
         condition: service_healthy

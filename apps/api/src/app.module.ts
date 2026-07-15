@@ -9,6 +9,8 @@ import { PrismaModule } from '@libs/prisma';
 import { RedisModule } from '@libs/redis';
 import { CorrelationIdMiddleware, envValidationSchema } from '@libs/common';
 import { HealthModule } from './health/health.module';
+import { AuthModule } from './auth/auth.module';
+import { MerchantsModule } from './merchants/merchants.module';
 
 @Module({
   imports: [
@@ -46,6 +48,8 @@ import { HealthModule } from './health/health.module';
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     EventEmitterModule.forRoot(),
     HealthModule,
+    AuthModule,
+    MerchantsModule,
   ],
 })
 export class AppModule {

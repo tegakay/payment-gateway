@@ -5,6 +5,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { PrismaModule } from '@libs/prisma';
 import { RedisModule } from '@libs/redis';
 import { envValidationSchema } from '@libs/common';
+import { ApiKeysWorkerModule } from './api-keys/api-keys-worker.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { envValidationSchema } from '@libs/common';
       },
     }),
     EventEmitterModule.forRoot(),
+    ApiKeysWorkerModule,
   ],
 })
 export class WorkerModule {}
